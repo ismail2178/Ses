@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ev Sesi</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+  body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:0;padding:24px;text-align:center}
+  h1{font-size:22px;margin:8px 0 20px}
+  button{font-size:20px;padding:16px 28px;border:0;border-radius:12px;background:#2d7ff9;color:#fff;width:100%;max-width:360px}
+  button.stop{background:#d33}
+  #durum{margin:18px 0;font-size:17px;min-height:24px}
+  #link{word-break:break-all;background:#222;padding:12px;border-radius:8px;font-size:14px;display:none;margin-top:12px}
+  #seviye{height:14px;background:#222;border-radius:7px;overflow:hidden;max-width:360px;margin:16px auto}
+  #bar{height:100%;width:0;background:#3c3;transition:width .1s}
+</style>
+</head>
+<body>
+<h1 id="baslik"></h1>
+<button id="btn"></button>
+<div id="durum"></div>
+<div id="seviye"><div id="bar"></div></div>
+<div id="link"></div>
+<audio id="ses" autoplay playsinline></audio>
+<script>
+const q = new URLSearchParams(location.search);
+const hedef = q.get("id");
+const $ = id => document.getElementById(id);
+const durum = t => $("durum").textContent = t;
+
+function seviyeGoster(stream){
+  const ctx = new (window.AudioContext||window.webkitAudioContext)();
+  const src = ctx.createMediaStreamSource(stream);
+  const an = ctx.createAnalyser(); an.fftSize = 512;
+  src.connect(an);
+  const d = new Uint8Array(an.fftSize);
+  (function ciz(){
+    an.getByteTimeDomainData(d);
+    let m = 0; for (const v of d) m = Math.max(m, Math.abs(v-128));
+    $("bar").style.width = Math.min(100, m*1.6) + "%";
+    requestAnimationFrame(ciz);
+  })();
+  return ctx;
+}
+
+if (!hedef) {
+  // ---------- BILGISAYAR: YAYINCI ----------
+  $("baslik").textContent = "Bilgisayar – Mikrofon Yayını";
+  $("btn").textContent = "Yayını Başlat";
+  let kimlik;
+  try { kimlik = localStorage.getItem("evsesi_id"); } catch(e){}
+  if (!kimlik) {
+    kimlik = "evsesi-" + crypto.getRandomValues(new Uint32Array(3)).join("");
+    try { localStorage.setItem("evsesi_id", kimlik); } catch(e){}
+  }
+  let mic, peer;
+  $("btn").onclick = async () => {
+    if (peer) return;
+    try {
+      mic = await navigator.mediaDevices.getUserMedia({audio:{
+        echoCancellation:false, noiseSuppression:false, autoGainControl:true}});
+    } catch(e) { durum("Mikrofon izni verilmedi: " + e.message); return; }
+    seviyeGoster(mic);
+    baglan();
+  };
+  function baglan(){
+    peer = new Peer(kimlik);
+    peer.on("open", () => {
+      const url = location.origin + location.pathname + "?id=" + kimlik;
+      $("link").textContent = url; $("link").style.display = "block";
+      $("btn").textContent = "Yayında"; $("btn").disabled = true;
+      durum("Yayında. Telefondan bu linki aç:");
+    });
+    peer.on("connection", c => {
+      c.on("open", () => {
+        durum("Bir dinleyici bağlandı.");
+        peer.call(c.peer, mic);
+      });
+    });
+    peer.on("disconnected", () => { durum("Sunucu bağlantısı koptu, yeniden bağlanıyor..."); setTimeout(()=>peer.reconnect(), 2000); });
+    peer.on("error", e => {
+      durum("Hata: " + e.type);
+      if (e.type === "unavailable-id") { setTimeout(()=>{ peer.destroy(); baglan(); }, 5000); }
+    });
+  }
+} else {
+  // ---------- TELEFON: DINLEYICI ----------
+  $("baslik").textContent = "Evdeki Ses";
+  $("btn").textContent = "Dinle";
+  let peer;
+  $("btn").onclick = () => {
+    $("ses").play().catch(()=>{});
+    if (peer) peer.destroy();
+    durum("Bağlanıyor...");
+    peer = new Peer();
+    peer.on("open", () => {
+      const c = peer.connect(hedef);
+      setTimeout(() => { if (!$("ses").srcObject) durum("Bilgisayara ulaşılamadı. Bilgisayardaki sayfa açık mı?"); }, 15000);
+    });
+    peer.on("call", call => {
+      call.answer();
+      call.on("stream", s => {
+        $("ses").srcObject = s; $("ses").play().catch(()=>{});
+        $("seviye").style.display = "none";
+        durum("Canlı dinleniyor.");
+        $("btn").textContent = "Yeniden Bağlan";
+      });
+      call.on("close", () => durum("Bağlantı kapandı. Yeniden Bağlan'a bas."));
+    });
+    peer.on("error", e => durum("Hata: " + e.type + (e.type==="peer-unavailable" ? " (bilgisayardaki sayfa kapalı)" : "")));
+  };
+}
+</script>
+</body>
+</html>
