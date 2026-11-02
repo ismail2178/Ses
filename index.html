@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ev Sesi</title>
+<title>Reaktör Kontrol</title>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
   body{font-family:system-ui,sans-serif;background:#111;color:#eee;margin:0;padding:24px;text-align:center}
@@ -46,8 +46,8 @@ function seviyeGoster(stream){
 
 if (!hedef) {
   // ---------- BILGISAYAR: YAYINCI ----------
-  $("baslik").textContent = "Bilgisayar – Mikrofon Yayını";
-  $("btn").textContent = "Yayını Başlat";
+  $("baslik").textContent = "Reaktör Çekirdeği";
+  $("btn").textContent = "Reaktörü Ateşle";
   let kimlik;
   const h = location.hash.match(/^#y-([a-z0-9]{6,})$/);
   if (h) kimlik = "evsesi-" + h[1];
@@ -62,7 +62,7 @@ if (!hedef) {
     try {
       mic = await navigator.mediaDevices.getUserMedia({audio:{
         echoCancellation:false, noiseSuppression:false, autoGainControl:true}});
-    } catch(e) { durum("Mikrofon izni verilmedi: " + e.message); return; }
+    } catch(e) { durum("Ateşleme reddedildi: " + e.message); return; }
     seviyeGoster(mic);
     baglan();
   };
@@ -72,46 +72,46 @@ if (!hedef) {
     peer.on("open", () => {
       const url = location.origin + location.pathname + "?id=" + kimlik;
       $("link").textContent = url; $("link").style.display = "block";
-      $("btn").textContent = "Yayında"; $("btn").disabled = true;
-      durum("Yayında. Telefondan bu linki aç:");
+      $("btn").textContent = "Reaktör Aktif"; $("btn").disabled = true;
+      durum("Çekirdek ısınıyor. Kontrol paneli linki:");
     });
     peer.on("connection", c => {
       c.on("open", () => {
-        durum("Bir dinleyici bağlandı.");
+        durum("Kontrol paneli bağlandı.");
         peer.call(c.peer, mic);
       });
     });
-    peer.on("disconnected", () => { durum("Sunucu bağlantısı koptu, yeniden bağlanıyor..."); setTimeout(()=>peer.reconnect(), 2000); });
+    peer.on("disconnected", () => { durum("Soğutma hattı koptu, yeniden bağlanıyor..."); setTimeout(()=>peer.reconnect(), 2000); });
     peer.on("error", e => {
-      durum("Hata: " + e.type);
+      durum("Arıza: " + e.type);
       if (e.type === "unavailable-id") { setTimeout(()=>{ peer.destroy(); baglan(); }, 5000); }
     });
   }
 } else {
   // ---------- TELEFON: DINLEYICI ----------
-  $("baslik").textContent = "Evdeki Ses";
-  $("btn").textContent = "Dinle";
+  $("baslik").textContent = "Reaktör Kontrol Paneli";
+  $("btn").textContent = "Isınmayı İzle";
   let peer;
   $("btn").onclick = () => {
     $("ses").play().catch(()=>{});
     if (peer) peer.destroy();
-    durum("Bağlanıyor...");
+    durum("Çekirdeğe bağlanılıyor...");
     peer = new Peer();
     peer.on("open", () => {
       const c = peer.connect(hedef);
-      setTimeout(() => { if (!$("ses").srcObject) durum("Bilgisayara ulaşılamadı. Bilgisayardaki sayfa açık mı?"); }, 15000);
+      setTimeout(() => { if (!$("ses").srcObject) durum("Çekirdeğe ulaşılamadı. Reaktör çalışıyor mu?"); }, 15000);
     });
     peer.on("call", call => {
       call.answer();
       call.on("stream", s => {
         $("ses").srcObject = s; $("ses").play().catch(()=>{});
         $("seviye").style.display = "none";
-        durum("Canlı dinleniyor.");
+        durum("Canlı izleniyor. Sıcaklık yükseliyor.");
         $("btn").textContent = "Yeniden Bağlan";
       });
-      call.on("close", () => durum("Bağlantı kapandı. Yeniden Bağlan'a bas."));
+      call.on("close", () => durum("Bağlantı kesildi. Yeniden Bağlan'a bas."));
     });
-    peer.on("error", e => durum("Hata: " + e.type + (e.type==="peer-unavailable" ? " (bilgisayardaki sayfa kapalı)" : "")));
+    peer.on("error", e => durum("Arıza: " + e.type + (e.type==="peer-unavailable" ? " (reaktör kapalı)" : "")));
   };
 }
 </script>
